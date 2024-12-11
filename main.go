@@ -46,7 +46,11 @@ func main() {
 		log.Fatalf("How did we get here? (line 44 duration parse failed! %v)", err)
 	}
 
-	maxWidth, maxHeight = resizeWithAspectRatio(width, height, 1920, 1080)
+	if header.IsAnimated() {
+		maxWidth, maxHeight = resizeWithAspectRatio(width, height, 800, 600)
+	} else {
+		maxWidth, maxHeight = resizeWithAspectRatio(width, height, 1920, 1080)
+	}
 
 	ops := lilliput.NewImageOps(8192)
 	defer ops.Close()
