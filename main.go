@@ -59,7 +59,7 @@ func main() {
 		Height:        maxHeight,
 		ResizeMethod:  lilliput.ImageOpsResize,
 		EncodeTimeout: maxEncodeTime,
-		EncodeOptions: map[int]int{lilliput.WebpQuality: 50},
+		EncodeOptions: map[int]int{lilliput.WebpQuality: 30},
 	}
 
 	output, err := ops.Transform(decoder, opts, outBuf)
