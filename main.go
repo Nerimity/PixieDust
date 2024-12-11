@@ -41,24 +41,12 @@ func main() {
 	width, height := header.Width(), header.Height()
 	var maxWidth, maxHeight int
 
-	maxEncodeTime, err := time.ParseDuration("20s")
+	maxEncodeTime, err := time.ParseDuration("30s")
 	if err != nil {
 		log.Fatalf("How did we get here? (line 44 duration parse failed! %v)", err)
 	}
 
-	if header.IsAnimated() {
-		if width > 1820 || height > 720 {
-			maxWidth, maxHeight = 1820, 720
-		} else {
-			maxWidth, maxHeight = width, height
-		}
-	} else {
-		if width > 1920 || height > 1080 {
-			maxWidth, maxHeight = 1920, 1080
-		} else {
-			maxWidth, maxHeight = width, height
-		}
-	}
+	maxWidth, maxHeight = resizeWithAspectRatio(width, height, 1920, 1080)
 
 	ops := lilliput.NewImageOps(8192)
 	defer ops.Close()
@@ -85,4 +73,17 @@ func main() {
 	}
 
 	fmt.Println("Image processed and saved to", destPath)
+}
+
+// Helper function to calculate new dimensions while maintaining aspect ratio
+func resizeWithAspectRatio(origWidth, origHeight, maxWidth, maxHeight int) (int, int) {
+	if origWidth <= maxWidth && origHeight <= maxHeight {
+		return origWidth, origHeight
+	}
+
+	ratio := float64(origWidth) / float64(origHeight)
+	if maxWidth/int(ratio) > maxHeight {
+		return int(float64(maxHeight) * ratio), maxHeight
+	}
+	return maxWidth, int(float64(maxWidth) / ratio)
 }
