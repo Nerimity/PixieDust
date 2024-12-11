@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/discord/lilliput"
@@ -21,6 +23,29 @@ func main() {
 
 	imagePath := os.Args[1]
 	destPath := os.Args[2]
+	crop := os.Args[3]
+	var cropWidth, cropHeight = 0, 0
+	var cropping = false
+
+	if crop != "" {
+		fmt.Println("Using crop specified.")
+		dimensions := strings.Split(crop, "x")
+		parsedWidth, err := strconv.Atoi(dimensions[0])
+
+		if err != nil {
+			log.Fatal("Invalid crop! Use the following format: widthxheight")
+		}
+
+		parsedHeight, err := strconv.Atoi(dimensions[1])
+
+		if err != nil {
+			log.Fatal("Invalid crop! Use the following format: widthxheight")
+		}
+
+		cropWidth = parsedWidth
+		cropHeight = parsedHeight
+		cropping = true
+	}
 
 	buf, err := os.ReadFile(imagePath)
 	if err != nil {
@@ -46,10 +71,12 @@ func main() {
 		log.Fatalf("How did we get here? (line 44 duration parse failed! %v)", err)
 	}
 
-	if header.IsAnimated() {
-		maxWidth, maxHeight = resizeWithAspectRatio(width, height, 800, 600)
-	} else {
-		maxWidth, maxHeight = resizeWithAspectRatio(width, height, 1920, 1080)
+	if !cropping {
+		if header.IsAnimated() {
+			maxWidth, maxHeight = resizeWithAspectRatio(width, height, 800, 600)
+		} else {
+			maxWidth, maxHeight = resizeWithAspectRatio(width, height, 1920, 1080)
+		}
 	}
 
 	ops := lilliput.NewImageOps(8192)
@@ -57,13 +84,26 @@ func main() {
 
 	outBuf := make([]byte, 50*1024*1024)
 
-	opts := &lilliput.ImageOptions{
-		FileType:      ".webp",
-		Width:         maxWidth,
-		Height:        maxHeight,
-		ResizeMethod:  lilliput.ImageOpsResize,
-		EncodeTimeout: maxEncodeTime,
-		EncodeOptions: map[int]int{lilliput.WebpQuality: 30},
+	var opts *lilliput.ImageOptions
+
+	if cropping {
+		opts = &lilliput.ImageOptions{
+			FileType:      ".webp",
+			Width:         cropWidth,
+			Height:        cropHeight,
+			ResizeMethod:  lilliput.ImageOpsFit,
+			EncodeTimeout: maxEncodeTime,
+			EncodeOptions: map[int]int{lilliput.WebpQuality: 30},
+		}
+	} else {
+		opts = &lilliput.ImageOptions{
+			FileType:      ".webp",
+			Width:         maxWidth,
+			Height:        maxHeight,
+			ResizeMethod:  lilliput.ImageOpsResize,
+			EncodeTimeout: maxEncodeTime,
+			EncodeOptions: map[int]int{lilliput.WebpQuality: 30},
+		}
 	}
 
 	output, err := ops.Transform(decoder, opts, outBuf)
