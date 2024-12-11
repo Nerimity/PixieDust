@@ -3,9 +3,8 @@ PixieDust is a quick and dirty solution to process common image formats into Web
 
 You'll need to edit the code to edit how PixieDust works, however here's how it's configured by default:
 - Max size: 1920x1080
-- Max gif size: 1820x720
-- 90% image quality
-- Compressed
+- 50% image quality
+- Outputs .webp files
 
 Due to the project's use of `discord/lilliput` for the actual image processing, this project only supports OSX/Linux.
 
