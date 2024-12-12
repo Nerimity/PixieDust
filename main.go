@@ -21,6 +21,14 @@ type Options struct {
 	CropHeight int
 	CropX      int
 	CropY      int
+
+	DoFillResize    bool
+	ResizeWidth     int
+	ResizeHeight    int
+	GifResizeWidth  int
+	GifResizeHeight int
+
+	ImageQuality int
 }
 
 func decodeImage(filePath string) (image.Image, error) {
@@ -49,20 +57,18 @@ func encodeWebP(img image.Image, filePath string) error {
 	}
 	defer outFile.Close()
 
-	options := &webp.Options{Lossless: false, Quality: 90}
+	options := &webp.Options{Lossless: false, Quality: 100}
 	return webp.Encode(outFile, img, options)
 }
 
-func processImage(inputPath, outputPath string, opts Options) error {
+func cropImage(inputPath, outputPath string, opts Options) error {
 	src, err := decodeImage(inputPath)
 	if err != nil {
 		return fmt.Errorf("failed to decode image: %v", err)
 	}
 
-	// Ensure the cropping coordinates and dimensions are within the image bounds
 	bounds := src.Bounds()
 
-	// If CropX and CropY are 0, crop from the center
 	if opts.CropX == 0 && opts.CropY == 0 {
 		opts.CropX = bounds.Max.X / 2
 		opts.CropY = bounds.Max.Y / 2
@@ -73,14 +79,13 @@ func processImage(inputPath, outputPath string, opts Options) error {
 		return fmt.Errorf("crop dimensions and coordinates are out of image bounds")
 	}
 
-	// Calculate the rectangle for cropping
+	// rect calc
 	x0 := opts.CropX - opts.CropWidth/2
 	y0 := opts.CropY - opts.CropHeight/2
 	x1 := opts.CropX + opts.CropWidth/2
 	y1 := opts.CropY + opts.CropHeight/2
 	cropRect := image.Rect(x0, y0, x1, y1)
 
-	// Crop the image
 	croppedImage := imaging.Crop(src, cropRect)
 
 	if strings.ToLower(outputPath[strings.LastIndex(outputPath, ".")+1:]) == "webp" {
@@ -107,7 +112,7 @@ func compressImage(inputPath, outputPath string, opts Options) error {
 	}
 
 	width, height := header.Width(), header.Height()
-	var maxWidth, maxHeight int
+	var newWidth, newHeight int
 
 	maxEncodeTime, err := time.ParseDuration("30s")
 	if err != nil {
@@ -115,9 +120,9 @@ func compressImage(inputPath, outputPath string, opts Options) error {
 	}
 
 	if header.IsAnimated() {
-		maxWidth, maxHeight = resizeWithAspectRatio(width, height, 800, 600)
+		newWidth, newHeight = resizeWithAspectRatio(width, height, opts.GifResizeWidth, opts.GifResizeHeight, opts)
 	} else {
-		maxWidth, maxHeight = resizeWithAspectRatio(width, height, 1920, 1080)
+		newWidth, newHeight = resizeWithAspectRatio(width, height, opts.ResizeWidth, opts.ResizeHeight, opts)
 	}
 
 	ops := lilliput.NewImageOps(8192)
@@ -125,13 +130,22 @@ func compressImage(inputPath, outputPath string, opts Options) error {
 
 	outBuf := make([]byte, 50*1024*1024)
 
+	resizeMethod := lilliput.ImageOpsFit
+
+	if opts.DoFillResize {
+		resizeMethod = lilliput.ImageOpsResize
+	}
+
 	imageOpts := &lilliput.ImageOptions{
-		FileType:      ".webp",
-		Width:         maxWidth,
-		Height:        maxHeight,
-		ResizeMethod:  lilliput.ImageOpsResize,
-		EncodeTimeout: maxEncodeTime,
-		EncodeOptions: map[int]int{lilliput.WebpQuality: 30},
+		FileType:             ".webp",
+		Width:                newWidth,
+		Height:               newHeight,
+		ResizeMethod:         resizeMethod,
+		EncodeTimeout:        maxEncodeTime,
+		NormalizeOrientation: true,
+		EncodeOptions: map[int]int{
+			lilliput.WebpQuality: opts.ImageQuality,
+		},
 	}
 
 	output, err := ops.Transform(decoder, imageOpts, outBuf)
@@ -148,7 +162,11 @@ func compressImage(inputPath, outputPath string, opts Options) error {
 	return nil
 }
 
-func resizeWithAspectRatio(origWidth, origHeight, maxWidth, maxHeight int) (int, int) {
+func resizeWithAspectRatio(origWidth, origHeight, maxWidth, maxHeight int, opts Options) (int, int) {
+	if opts.DoFillResize {
+		return opts.ResizeWidth, opts.ResizeHeight
+	}
+
 	if origWidth <= maxWidth && origHeight <= maxHeight {
 		return origWidth, origHeight
 	}
@@ -161,9 +179,11 @@ func resizeWithAspectRatio(origWidth, origHeight, maxWidth, maxHeight int) (int,
 }
 
 func main() {
-	var cropWidth, cropHeight, cropX, cropY int
+	var cropWidth, cropHeight, cropX, cropY,
+		resizeWidth, resizeHeight, gifResizeWidth,
+		gifResizeHeight, quality int
 	var inputPath, outputPath string
-	var doCrop bool
+	var doCrop, doFillResize bool
 
 	rootCmd := &cobra.Command{
 		Use:   "pixiedust",
@@ -181,14 +201,20 @@ func main() {
 					CropY:      cropY,
 				}
 
-				err := processImage(inputPath, outputPath, opts)
+				err := cropImage(inputPath, outputPath, opts)
 				inputPath = outputPath
 				if err != nil {
 					log.Fatalf("Error cropping image: %v", err)
 				}
 			}
 
-			opts := Options{}
+			opts := Options{
+				ResizeWidth:     resizeWidth,
+				ResizeHeight:    resizeHeight,
+				GifResizeWidth:  gifResizeWidth,
+				GifResizeHeight: gifResizeHeight,
+				DoFillResize:    doFillResize,
+			}
 			err := compressImage(inputPath, outputPath, opts)
 			if err != nil {
 				log.Fatalf("Error compressing image: %v", err)
@@ -200,11 +226,20 @@ func main() {
 
 	rootCmd.Flags().StringVarP(&inputPath, "input", "i", "", "Input image path (required)")
 	rootCmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output image path (required)")
+
+	rootCmd.Flags().IntVar(&quality, "quality", 30, "The end quality of the WebP when re-encoding. Higher means less processing time, but also a bigger file size.")
+
 	rootCmd.Flags().IntVar(&cropWidth, "crop-width", 0, "Crop width")
 	rootCmd.Flags().IntVar(&cropHeight, "crop-height", 0, "Crop height")
 	rootCmd.Flags().IntVar(&cropX, "crop-x", 0, "Crop center X coordinate")
 	rootCmd.Flags().IntVar(&cropY, "crop-y", 0, "Crop center Y coordinate")
-	rootCmd.Flags().BoolVar(&doCrop, "crop", false, "Enable cropping")
+	rootCmd.Flags().BoolVar(&doCrop, "crop", false, "Crop Image")
+
+	rootCmd.Flags().IntVar(&resizeWidth, "width", 1920, "The width to resize to")
+	rootCmd.Flags().IntVar(&resizeHeight, "height", 1080, "The height to resize to")
+	rootCmd.Flags().IntVar(&gifResizeWidth, "gif-width", 800, "The width to resize gifs to")
+	rootCmd.Flags().IntVar(&gifResizeHeight, "gif-height", 600, "The height to resize gifs to")
+	rootCmd.Flags().BoolVar(&doFillResize, "resize-fill", false, "Uses the fill method to resize the image, instead of calculating aspect ratio to make it fit.")
 
 	rootCmd.MarkFlagRequired("input")
 	rootCmd.MarkFlagRequired("output")
