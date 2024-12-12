@@ -169,12 +169,6 @@ func main() {
 		Use:   "pixiedust",
 		Short: "A CLI for processing images - Magically fast!",
 		Run: func(cmd *cobra.Command, args []string) {
-			opts := Options{}
-			err := compressImage(inputPath, outputPath, opts)
-			if err != nil {
-				log.Fatalf("Error resizing image: %v", err)
-			}
-
 			if doCrop {
 				if cropWidth <= 0 || cropHeight <= 0 || cropX < 0 || cropY < 0 {
 					log.Fatal("Invalid crop parameters.")
@@ -187,10 +181,17 @@ func main() {
 					CropY:      cropY,
 				}
 
-				err := processImage(outputPath, outputPath, opts)
+				err := processImage(inputPath, outputPath, opts)
+				inputPath = outputPath
 				if err != nil {
-					log.Fatalf("Error processing image: %v", err)
+					log.Fatalf("Error cropping image: %v", err)
 				}
+			}
+
+			opts := Options{}
+			err := compressImage(inputPath, outputPath, opts)
+			if err != nil {
+				log.Fatalf("Error compressing image: %v", err)
 			}
 
 			fmt.Println("Image processed and saved to", outputPath)
