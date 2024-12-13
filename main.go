@@ -214,6 +214,7 @@ func main() {
 				GifResizeWidth:  gifResizeWidth,
 				GifResizeHeight: gifResizeHeight,
 				DoFillResize:    doFillResize,
+				ImageQuality:    quality,
 			}
 			err := compressImage(inputPath, outputPath, opts)
 			if err != nil {
